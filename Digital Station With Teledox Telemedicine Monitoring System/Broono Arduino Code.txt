@@ -1,0 +1,178 @@
+/*
+This a digital Weather station compiled by Four guys.
+1.OpondoBroono Oluoch
+2.Isiah Okoth Odhiambo
+3.Jean Wanjira Ngugi
+4.Pius Muriuki Kariuki 
+
+ABOUT 
+It comprises of hardware parts which are:
+An ESP32 board
+DHT11 temperature humidity sensor
+A breadboard,jumper wires for connection
+USB Cable  
+A 330 kilo ohm resistor
+
+The software part of it comprises of:
+A RTDB
+A C++ code in Arduino IDE
+A Weather Station Simple  Web server (Compiled  in HTML5 And CSS:)
+
+ALGORITHM
+1.Making The Connections of the hardware scheematic block diagram
+2.Making everything look neat
+3.Code
+4.Setup ESP32 on Arduino IDE
+5.Install Required Libraries
+6.Creation of RealTime Database on Firebase
+7.Configueation of the databse with the IDE
+8.Uploading Data to the serial Monitor and then to the web server and lastly stored in the database
+*/
+
+
+#include "DHT.h"
+#define DHTPIN 15   
+#define DHTTYPE DHT11   // DHT 11
+
+DHT dht(DHTPIN, DHTTYPE);
+
+//include the firebase library
+#include<Firebase_ESP_Client.h>
+//Provide the token generation process info.
+#include "addons/TokenHelper.h"
+//Provide the RTDB payload printing info and other helper functions.
+#include "addons/RTDBHelper.h"
+#define API_KEY "AIzaSyDIwkkkPo4Hrs5OPTNHAGGCNDnDUPAftG0"
+#define DATABASE_URL "https://digital-weather--station-default-rtdb.firebaseio.com/"
+//Define Firebase Data object
+// GPIO where the DS18B20 is connected to
+
+  // Digital pin connected to the DHT 
+
+const char *ssid = "Arduino";
+const char *password = "Arduino5";
+//Store status of signup
+bool signupOK = false;
+//help keep track of time
+int count =0;
+
+WiFiServer server(80);
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+void setup() {
+  // Start the Serial Monitor
+  Serial.begin(115200);
+  Serial.print("Connecting to ");
+  Serial.print(ssid);
+  WiFi.begin(ssid, password);
+  
+  while(WiFi.status() !=WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    }
+  Serial.println("");
+  Serial.println("WiFi connected. ");
+  Serial.println(" IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  //Begin the server
+  server.begin();
+  // Start the DS18B20 sensor
+ 
+   /* Assign the api key (required) */
+  config.api_key = API_KEY;
+/* Assign the RTDB URL (required) */
+  config.database_url = DATABASE_URL;
+/* Sign up signup with credentials*/
+  if (Firebase.signUp(&config, &auth, "", "")){
+    Serial.println("ok");
+    signupOK = true;
+  }
+  else{
+    Serial.println("Connection to firebase failed");
+  }
+/* Assign the callback function for the long running token generation task */
+  config.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
+  //initialize firebase
+  Firebase.begin(&config, &auth);
+  //enable wifi reconnection
+  Firebase.reconnectWiFi(true);
+}
+void loop() {
+  
+ 
+
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+  // Read temperature as Fahrenheit (isFahrenheit = true)
+  float f = dht.readTemperature(true);
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t) || isnan(f)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
+  }
+
+  // Compute heat index in Fahrenheit (the default)
+  float hif = dht.computeHeatIndex(f, h);
+  // Compute heat index in Celsius (isFahreheit = false)
+  float hic = dht.computeHeatIndex(t, h, false);
+
+  Serial.print(F("Humidity: "));
+  Serial.print(h);
+  Serial.print(F("%  Temperature: "));
+  Serial.print(t);
+  Serial.print(F("°C "));
+  Serial.print(f);
+  Serial.print(F("°F  Heat index: "));
+  Serial.print(hic);
+  Serial.print(F("°C "));
+  Serial.print(hif);
+  Serial.println(F("°F"));
+  
+ 
+  //create an instance of the client and assign it to listen to incoming client request
+  WiFiClient client = server.available();
+if(client && client.connected()){
+client.println("<!DOCTYPE html>");
+   client.println("<html>");
+   client.println("<head>");
+   client.println("<meta name=\"viewport\" content =\"width=device-width, initial-scale=1\">");
+   client.println(" <title>ESP-32 webServer</title>");
+   client.println(" <style>");
+   client.println("html { font-family: Helvetica; display: inline-block; margin: auto; text-align: center;}");
+   client.println(".button { background-color: #555555; border: none; color: white; padding: 16px 40px;font-size: 30px; margin: 2px; }");
+   client.println("</style>");
+   client.println("</head>");
+   client.println(" <body>");
+   client.println("<h1> ESP32 Web Server </h1>");
+   client.println("<h2> Temperature  </h2>");
+   client.println("<p>");
+   client.println("<button class=\"button\"> Humidity : "+ (String)h +" </button>");
+   client.println("</p>");
+   
+   client.println("<p>");
+   client.println("<button class=\"button\"> Temp ºF: "+ (String)t +"ºC </button>");
+   
+   client.println("</p>");
+   client.println("  </body>");
+   client.println("</html>");
+  }
+  count++;
+  
+  //check if database is ready, signup is successful, intevals of 10 seconds
+  if(Firebase.ready()&&signupOK&&count%2!=0){
+    int currentTime=millis();
+    //upload temperature in degrees
+    Firebase.RTDB.setFloat(&fbdo, (String)currentTime+"/tempC", h);
+    //upload temperature in farenheit
+    Firebase.RTDB.setFloat(&fbdo, (String)currentTime+"/tempF", t);
+  }
+  
+  //delay for 500 seconds
+  delay(500);
+}
